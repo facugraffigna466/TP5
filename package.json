@@ -1,0 +1,18 @@
+{
+  "name": "pagina-tp5",
+  "version": "1.0.0",
+  "description": "Aplicación de gestión de tareas con frontend, backend y base de datos",
+  "scripts": {
+    "install-backend": "cd backend && npm install",
+    "install-frontend": "cd frontend && npm install",
+    "install-all": "npm run install-backend && npm run install-frontend",
+    "start-backend": "cd backend && npm start",
+    "start-frontend": "cd frontend && npm run dev",
+    "build-frontend": "cd frontend && npm run build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+
+

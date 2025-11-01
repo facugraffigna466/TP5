@@ -1,0 +1,250 @@
+.app {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.container {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  padding: 40px;
+  max-width: 800px;
+  width: 100%;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+header h1 {
+  color: #667eea;
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+}
+
+.subtitle {
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.error-message {
+  background: #fee;
+  color: #c33;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+  border: 1px solid #fcc;
+}
+
+.stats {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.stat-card {
+  flex: 1;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 12px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.stat-number {
+  font-size: 2rem;
+  font-weight: bold;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.form-nueva-tarea {
+  background: #f8f9fa;
+  padding: 25px;
+  border-radius: 12px;
+  margin-bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.input-titulo {
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.input-titulo:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.input-descripcion {
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 1rem;
+  resize: vertical;
+  font-family: inherit;
+  transition: border-color 0.3s;
+}
+
+.input-descripcion:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.btn-agregar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 14px 20px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-agregar:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-agregar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tareas-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 1.2rem;
+}
+
+.tarea-card {
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 15px;
+  transition: all 0.3s;
+}
+
+.tarea-card:hover {
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.tarea-card.completada {
+  background: #f0f0f0;
+  opacity: 0.7;
+}
+
+.tarea-content {
+  display: flex;
+  gap: 15px;
+  flex: 1;
+  align-items: flex-start;
+}
+
+.checkbox {
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+.tarea-info {
+  flex: 1;
+}
+
+.tarea-info h3 {
+  color: #333;
+  margin-bottom: 8px;
+  font-size: 1.2rem;
+}
+
+.tarea-info p {
+  color: #666;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.tarea-info .fecha {
+  font-size: 0.85rem;
+  color: #999;
+}
+
+.tachado {
+  text-decoration: line-through;
+  color: #999 !important;
+}
+
+.btn-eliminar {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.btn-eliminar:hover {
+  background: #fee;
+}
+
+@media (max-width: 600px) {
+  .container {
+    padding: 20px;
+  }
+
+  header h1 {
+    font-size: 2rem;
+  }
+
+  .stats {
+    flex-direction: column;
+  }
+
+  .tarea-card {
+    flex-direction: column;
+  }
+
+  .btn-eliminar {
+    align-self: flex-end;
+  }
+}
+
+
