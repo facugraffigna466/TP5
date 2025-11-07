@@ -69,6 +69,53 @@ header h1 {
   opacity: 0.9;
 }
 
+.stat-card-vencidas {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5253 100%);
+}
+
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 25px;
+  align-items: center;
+}
+
+.filtro-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 150px;
+}
+
+.filtro-group label {
+  font-size: 0.85rem;
+  color: #555;
+  font-weight: 600;
+}
+
+.filtro-group select {
+  padding: 10px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.toggle-vencidas {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #555;
+  cursor: pointer;
+}
+
+.toggle-vencidas input {
+  width: 18px;
+  height: 18px;
+}
+
 .form-nueva-tarea {
   background: #f8f9fa;
   padding: 25px;
@@ -105,6 +152,32 @@ header h1 {
 .input-descripcion:focus {
   outline: none;
   border-color: #667eea;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 15px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campo label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555;
+}
+
+.campo select,
+.campo input {
+  padding: 10px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.95rem;
 }
 
 .btn-agregar {
@@ -195,6 +268,53 @@ header h1 {
   font-size: 1.2rem;
 }
 
+.detalle-linea {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #eee;
+  color: #555;
+}
+
+.badge-prioridad-alta {
+  background: #ffe5e5;
+  color: #d32f2f;
+}
+
+.badge-prioridad-media {
+  background: #e0e7ff;
+  color: #3949ab;
+}
+
+.badge-prioridad-baja {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.badge-fecha {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.badge-categoria {
+  background: #f3e5f5;
+  color: #6a1b9a;
+}
+
 .tarea-info p {
   color: #666;
   margin-bottom: 10px;
@@ -236,6 +356,11 @@ header h1 {
 
   .stats {
     flex-direction: column;
+  }
+
+  .filtros {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .tarea-card {
