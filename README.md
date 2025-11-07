@@ -93,7 +93,17 @@ La aplicación estará disponible en `http://localhost:5173`
 - `POST /api/tareas` - Crear una nueva tarea
 - `PUT /api/tareas/:id` - Actualizar una tarea
 - `DELETE /api/tareas/:id` - Eliminar una tarea
+- `GET /api/tareas/resumen` - Métricas agregadas (pendientes, completadas, favoritas, próximas vencimientos)
 - `GET /health` - Health check del servidor
+
+### Parámetros de consulta soportados
+- `estado` (`pendientes` | `completadas`)
+- `prioridad` (`alta` | `media` | `baja`)
+- `vencidas` (`true`)
+- `orden` (`vencimiento_asc` | `vencimiento_desc`)
+- `q` (búsqueda por título o descripción)
+- `categoria` (filtro exacto por categoría)
+- `favoritas` (`true` para solo favoritas)
 
 ## 🗄️ Base de Datos
 
@@ -107,10 +117,18 @@ La aplicación usa SQLite. La base de datos se crea automáticamente al iniciar 
 
 Estructura de la tabla `tareas`:
 - `id` (INTEGER PRIMARY KEY)
-- `titulo` (TEXT)
-- `descripcion` (TEXT)
+- `titulo` (TEXT, único e indispensable)
+- `descripcion` (TEXT, máx. 200 caracteres)
 - `completada` (INTEGER, 0 o 1)
 - `fecha_creacion` (DATETIME)
+- `prioridad` (TEXT, valores: alta | media | baja, por defecto media)
+- `fecha_vencimiento` (DATETIME, opcional y no puede estar en el pasado)
+- `categoria` (TEXT, opcional, máx. 30 caracteres)
+
+> ⚠️ **Reglas de negocio clave**
+> - El título debe ser único sin distinguir mayúsculas/minúsculas.
+> - No se pueden tener más de 5 tareas de prioridad alta pendientes.
+> - Las fechas de vencimiento deben ser futuras.
 
 ### Ver la Base de Datos
 
@@ -164,15 +182,59 @@ Para producción, puedes configurar:
 
 ## 📝 Funcionalidades
 
-- ✅ Crear nuevas tareas
-- ✅ Marcar tareas como completadas/pendientes
-- ✅ Eliminar tareas
-- ✅ Ver estadísticas (total, pendientes, completadas)
-- ✅ Interfaz moderna y responsive
+- ✅ Crear nuevas tareas con prioridad, fecha de vencimiento y categoría
+- ✅ Marcar tareas como completadas/pendientes con validación de límites
+- ✅ Eliminar tareas con confirmación
+- ✅ Ver estadísticas (total, pendientes, completadas, vencidas)
+- ✅ Filtrar por estado, prioridad, categoría, favoritas, vencidas y ordenar por vencimiento
+- ✅ Buscar por texto en títulos y descripciones
+- ✅ Marcar tareas como favoritas y gestionarlas desde la UI
+- ✅ Dashboard con resumen general, próximos vencimientos y top de categorías
+- ✅ Interfaz moderna y responsive con badges informativos (prioridad, categoría, favorita, vencimiento)
+
+## 🧪 Testing y Cobertura
+
+El proyecto incluye suites separadas para backend y frontend.
+
+### Backend (Jest + Supertest)
+```bash
+cd backend
+npm install        # ejecutar al menos una vez para instalar devDependencies
+npm test           # ejecutar suite completa
+npm run test:watch # modo interactivo
+npm run test:coverage
+```
+
+Los tests cubren:
+- Validaciones de negocio (unicidad, límites de longitud, fechas, prioridades).
+- Casos borde y manejo de errores (duplicados, límites de alta prioridad, excepciones SQLite).
+- Endpoints REST completos (`GET/POST/PUT/DELETE`, filtros, búsqueda, favoritas y health-check).
+- Resumen agregado (`/api/tareas/resumen`) y métricas derivadas.
+- Verificación del esquema de la base de datos (incluyendo nuevas columnas).
+
+### Frontend (Vitest + React Testing Library)
+```bash
+cd frontend
+npm install
+npm test              # corre una vez
+npm run test:watch    # modo interactivo
+npm run test:coverage # reporte de cobertura
+```
+
+Los tests cubren:
+- Render inicial con estadísticas y métricas.
+- Manejo de errores en carga y creación de tareas (mockeando Axios).
+- Creación de tareas, refresco de datos y validaciones del formulario.
+- Aplicación de filtros (estado, prioridad, categoría, favoritas, vencidas), ordenamientos y búsqueda por texto.
+- Toggle de completado y favoritas, eliminación con confirmación y badges de prioridad/vencimiento/categoría.
+- Actualización del dashboard de resumen (próximas tareas y top de categorías).
+
+> 📈 Ambos entornos generan reportes de cobertura HTML en sus respectivas carpetas `coverage/`.
 
 ## 🔧 Tecnologías Utilizadas
 
 - **Frontend**: React 18, Vite, Axios
-- **Backend**: Node.js, Express, SQLite3
+- **Backend**: Node.js, Express, SQLite3, Jest, Supertest
+- **Testing Frontend**: Vitest, React Testing Library, Jest DOM
 - **Estilos**: CSS puro con diseño moderno
 

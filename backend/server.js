@@ -3,50 +3,11 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Base de datos SQLite
-const dbPath = path.join(__dirname, 'database.sqlite');
-const db = new sqlite3.Database(dbPath);
-
-// Crear tabla de tareas si no existe
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS tareas (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      titulo TEXT NOT NULL,
-      descripcion TEXT,
-      completada INTEGER DEFAULT 0,
-      fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
-      prioridad TEXT DEFAULT 'media',
-      fecha_vencimiento DATETIME,
-      categoria TEXT
-    )
-  `);
-
-  // Migraciones simples para entornos existentes
-  const safeAddColumn = (columnName, definition) => {
-    db.run(`ALTER TABLE tareas ADD COLUMN ${columnName} ${definition}`, (err) => {
-      if (err && !/duplicate column name/i.test(err.message)) {
-        console.error(`Error agregando columna ${columnName}:`, err.message);
-      }
-    });
-  };
-
-  safeAddColumn('prioridad', "TEXT DEFAULT 'media'");
-  safeAddColumn('fecha_vencimiento', 'DATETIME');
-  safeAddColumn('categoria', 'TEXT');
-});
-
 const PRIORIDADES_VALIDAS = ['alta', 'media', 'baja'];
 const MAX_DESCRIPCION = 200;
 const MAX_CATEGORIA = 30;
 const MAX_TAREAS_ALTA_PENDIENTES = 5;
+const MAX_PROXIMAS_VENCIMIENTOS = 5;
 
 const normalizarPrioridad = (valor) => {
   if (!valor) return 'media';
@@ -68,7 +29,7 @@ const parsearFechaVencimiento = (valor) => {
   return { value: fecha.toISOString() };
 };
 
-const validarPayloadTarea = ({ titulo, descripcion, prioridad, fecha_vencimiento, categoria }) => {
+const validarPayloadTarea = ({ titulo, descripcion, prioridad, fecha_vencimiento, categoria, favorita }) => {
   if (!titulo || !titulo.trim()) {
     return { error: 'El título es requerido' };
   }
@@ -91,6 +52,8 @@ const validarPayloadTarea = ({ titulo, descripcion, prioridad, fecha_vencimiento
     return { error: fechaNormalizada.error };
   }
 
+  const favoritaNormalizada = favorita ? 1 : 0;
+
   return {
     data: {
       titulo: titulo.trim(),
@@ -98,6 +61,7 @@ const validarPayloadTarea = ({ titulo, descripcion, prioridad, fecha_vencimiento
       prioridad: prioridadNormalizada,
       fecha_vencimiento: fechaNormalizada?.value || null,
       categoria: categoria ? categoria.trim() : null,
+      favorita: favoritaNormalizada,
     },
   };
 };
@@ -105,9 +69,10 @@ const validarPayloadTarea = ({ titulo, descripcion, prioridad, fecha_vencimiento
 const mapearRow = (row) => ({
   ...row,
   completada: Number(row.completada),
+  favorita: Number(row.favorita),
 });
 
-const verificarTituloDuplicado = ({ titulo, excluirId }, callback) => {
+const verificarTituloDuplicado = (db, { titulo, excluirId }, callback) => {
   const params = [titulo];
   let query = 'SELECT id FROM tareas WHERE lower(titulo) = lower(?)';
   if (excluirId) {
@@ -121,7 +86,7 @@ const verificarTituloDuplicado = ({ titulo, excluirId }, callback) => {
   });
 };
 
-const contarTareasPrioridadAltaPendientes = ({ excluirId }, callback) => {
+const contarTareasPrioridadAltaPendientes = (db, { excluirId }, callback) => {
   const params = ['alta'];
   let query = 'SELECT COUNT(*) as total FROM tareas WHERE prioridad = ? AND completada = 0';
   if (excluirId) {
@@ -134,210 +99,388 @@ const contarTareasPrioridadAltaPendientes = ({ excluirId }, callback) => {
   });
 };
 
-// Rutas API
+const initializeDatabase = (db) => new Promise((resolve, reject) => {
+  db.serialize(() => {
+    db.run(
+      `
+        CREATE TABLE IF NOT EXISTS tareas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          titulo TEXT NOT NULL,
+          descripcion TEXT,
+          completada INTEGER DEFAULT 0,
+          fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+          prioridad TEXT DEFAULT 'media',
+          fecha_vencimiento DATETIME,
+          categoria TEXT,
+          favorita INTEGER DEFAULT 0
+        )
+      `,
+      (err) => {
+        if (err) {
+          return reject(err);
+        }
 
-// Obtener todas las tareas
-app.get('/api/tareas', (req, res) => {
-  const { prioridad, estado, vencidas, orden } = req.query;
+        const columns = [
+          ['prioridad', "TEXT DEFAULT 'media'"],
+          ['fecha_vencimiento', 'DATETIME'],
+          ['categoria', 'TEXT'],
+          ['favorita', 'INTEGER DEFAULT 0'],
+        ];
 
-  const condiciones = [];
-  const params = [];
+        if (columns.length === 0) {
+          return resolve();
+        }
 
-  if (prioridad) {
-    const prioridadNormalizada = normalizarPrioridad(prioridad);
-    if (prioridadNormalizada === null) {
-      return res.status(400).json({ error: `Prioridad inválida. Valores permitidos: ${PRIORIDADES_VALIDAS.join(', ')}` });
-    }
-    condiciones.push('prioridad = ?');
-    params.push(prioridadNormalizada);
-  }
+        let pendientes = columns.length;
+        columns.forEach(([columnName, definition]) => {
+          db.run(`ALTER TABLE tareas ADD COLUMN ${columnName} ${definition}`, (alterErr) => {
+            if (alterErr && !/duplicate column name/i.test(alterErr.message)) {
+              console.error(`Error agregando columna ${columnName}:`, alterErr.message);
+              return reject(alterErr);
+            }
 
-  if (estado) {
-    if (!['pendientes', 'completadas'].includes(estado)) {
-      return res.status(400).json({ error: 'Estado inválido. Use "pendientes" o "completadas"' });
-    }
-    condiciones.push('completada = ?');
-    params.push(estado === 'completadas' ? 1 : 0);
-  }
-
-  if (vencidas === 'true') {
-    condiciones.push("fecha_vencimiento IS NOT NULL AND fecha_vencimiento < datetime('now')");
-    condiciones.push('completada = 0');
-  }
-
-  const whereClause = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
-  let orderClause = 'ORDER BY fecha_creacion DESC';
-
-  if (orden === 'vencimiento_asc') {
-    orderClause = 'ORDER BY fecha_vencimiento IS NULL, fecha_vencimiento ASC';
-  } else if (orden === 'vencimiento_desc') {
-    orderClause = 'ORDER BY fecha_vencimiento IS NULL, fecha_vencimiento DESC';
-  }
-
-  db.all(`SELECT * FROM tareas ${whereClause} ${orderClause}`, params, (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    res.json(rows.map(mapearRow));
-  });
-});
-
-// Obtener una tarea por ID
-app.get('/api/tareas/:id', (req, res) => {
-  const id = req.params.id;
-  db.get('SELECT * FROM tareas WHERE id = ?', [id], (err, row) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    if (!row) {
-      return res.status(404).json({ error: 'Tarea no encontrada' });
-    }
-    res.json(mapearRow(row));
-  });
-});
-
-// Crear una nueva tarea
-app.post('/api/tareas', (req, res) => {
-  const { titulo, descripcion, prioridad, fecha_vencimiento, categoria } = req.body;
-  const validacion = validarPayloadTarea({ titulo, descripcion, prioridad, fecha_vencimiento, categoria });
-
-  if (validacion.error) {
-    return res.status(400).json({ error: validacion.error });
-  }
-
-  const { data } = validacion;
-
-  verificarTituloDuplicado({ titulo: data.titulo }, (errDuplicado, existe) => {
-    if (errDuplicado) {
-      return res.status(500).json({ error: errDuplicado.message });
-    }
-    if (existe) {
-      return res.status(409).json({ error: 'Ya existe una tarea con este título' });
-    }
-
-    const continuarInsercion = () => {
-      db.run(
-        'INSERT INTO tareas (titulo, descripcion, prioridad, fecha_vencimiento, categoria) VALUES (?, ?, ?, ?, ?)',
-        [data.titulo, data.descripcion, data.prioridad, data.fecha_vencimiento, data.categoria],
-        function(err) {
-          if (err) {
-            return res.status(500).json({ error: err.message });
-          }
-          res.status(201).json({
-            id: this.lastID,
-            titulo: data.titulo,
-            descripcion: data.descripcion,
-            completada: 0,
-            fecha_creacion: new Date().toISOString(),
-            prioridad: data.prioridad,
-            fecha_vencimiento: data.fecha_vencimiento,
-            categoria: data.categoria
+            pendientes -= 1;
+            if (pendientes === 0) {
+              resolve();
+            }
           });
+        });
+      }
+    );
+  });
+});
+
+const createServer = (options = {}) => {
+  const app = express();
+  const dbPath = options.dbPath || path.join(__dirname, 'database.sqlite');
+  const db = options.db || new sqlite3.Database(dbPath);
+
+  app.use(cors());
+  app.use(express.json());
+
+  const ready = initializeDatabase(db).catch((err) => {
+    console.error('Error inicializando la base de datos:', err);
+    throw err;
+  });
+
+  // Rutas API
+  app.get('/api/tareas', (req, res) => {
+    const { prioridad, estado, vencidas, orden, q, categoria, favoritas } = req.query;
+
+    const condiciones = [];
+    const params = [];
+
+    if (prioridad) {
+      const prioridadNormalizada = normalizarPrioridad(prioridad);
+      if (prioridadNormalizada === null) {
+        return res.status(400).json({ error: `Prioridad inválida. Valores permitidos: ${PRIORIDADES_VALIDAS.join(', ')}` });
+      }
+      condiciones.push('prioridad = ?');
+      params.push(prioridadNormalizada);
+    }
+
+    if (estado) {
+      if (!['pendientes', 'completadas'].includes(estado)) {
+        return res.status(400).json({ error: 'Estado inválido. Use "pendientes" o "completadas"' });
+      }
+      condiciones.push('completada = ?');
+      params.push(estado === 'completadas' ? 1 : 0);
+    }
+
+    if (vencidas === 'true') {
+      condiciones.push("fecha_vencimiento IS NOT NULL AND fecha_vencimiento < datetime('now')");
+      condiciones.push('completada = 0');
+    }
+
+    if (categoria) {
+      condiciones.push('LOWER(categoria) = LOWER(?)');
+      params.push(categoria);
+    }
+
+    if (favoritas === 'true') {
+      condiciones.push('favorita = 1');
+    }
+
+    if (q) {
+      condiciones.push('(LOWER(titulo) LIKE LOWER(?) OR LOWER(descripcion) LIKE LOWER(?))');
+      params.push(`%${q}%`, `%${q}%`);
+    }
+
+    const whereClause = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
+    let orderClause = 'ORDER BY fecha_creacion DESC';
+
+    if (orden === 'vencimiento_asc') {
+      orderClause = 'ORDER BY fecha_vencimiento IS NULL, fecha_vencimiento ASC';
+    } else if (orden === 'vencimiento_desc') {
+      orderClause = 'ORDER BY fecha_vencimiento IS NULL, fecha_vencimiento DESC';
+    }
+
+    db.all(`SELECT * FROM tareas ${whereClause} ${orderClause}`, params, (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.json(rows.map(mapearRow));
+    });
+  });
+
+  app.get('/api/tareas/resumen', (req, res) => {
+    const query = `
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN completada = 0 THEN 1 ELSE 0 END) as pendientes,
+        SUM(CASE WHEN completada = 1 THEN 1 ELSE 0 END) as completadas,
+        SUM(CASE WHEN favorita = 1 THEN 1 ELSE 0 END) as favoritas,
+        SUM(CASE WHEN fecha_vencimiento IS NOT NULL AND completada = 0 AND fecha_vencimiento < datetime('now') THEN 1 ELSE 0 END) as vencidas
+      FROM tareas
+    `;
+
+    db.get(query, [], (err, resumen) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+
+      db.all(
+        `
+          SELECT id, titulo, fecha_vencimiento, prioridad, categoria
+          FROM tareas
+          WHERE fecha_vencimiento IS NOT NULL
+            AND completada = 0
+            AND fecha_vencimiento >= datetime('now')
+          ORDER BY fecha_vencimiento ASC
+          LIMIT ?
+        `,
+        [MAX_PROXIMAS_VENCIMIENTOS],
+        (errProximas, proximas) => {
+          if (errProximas) {
+            return res.status(500).json({ error: errProximas.message });
+          }
+
+          db.all(
+            `
+              SELECT categoria, COUNT(*) as cantidad
+              FROM tareas
+              WHERE categoria IS NOT NULL AND categoria != ''
+              GROUP BY categoria
+              ORDER BY cantidad DESC
+            `,
+            [],
+            (errCategorias, categorias) => {
+              if (errCategorias) {
+                return res.status(500).json({ error: errCategorias.message });
+              }
+
+              res.json({
+                ...resumen,
+                proximas,
+                categorias,
+              });
+            }
+          );
         }
       );
-    };
+    });
+  });
 
-    if (data.prioridad === 'alta') {
-      contarTareasPrioridadAltaPendientes({}, (errConteo, total) => {
-        if (errConteo) {
-          return res.status(500).json({ error: errConteo.message });
-        }
-        if (total >= MAX_TAREAS_ALTA_PENDIENTES) {
-          return res.status(422).json({ error: `No puedes tener más de ${MAX_TAREAS_ALTA_PENDIENTES} tareas de prioridad alta pendientes` });
-        }
+  app.get('/api/tareas/:id', (req, res) => {
+    const id = req.params.id;
+    db.get('SELECT * FROM tareas WHERE id = ?', [id], (err, row) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      if (!row) {
+        return res.status(404).json({ error: 'Tarea no encontrada' });
+      }
+      res.json(mapearRow(row));
+    });
+  });
+
+  app.post('/api/tareas', (req, res) => {
+    const { titulo, descripcion, prioridad, fecha_vencimiento, categoria, favorita } = req.body;
+    const validacion = validarPayloadTarea({ titulo, descripcion, prioridad, fecha_vencimiento, categoria, favorita });
+
+    if (validacion.error) {
+      return res.status(400).json({ error: validacion.error });
+    }
+
+    const { data } = validacion;
+
+    verificarTituloDuplicado(db, { titulo: data.titulo }, (errDuplicado, existe) => {
+      if (errDuplicado) {
+        return res.status(500).json({ error: errDuplicado.message });
+      }
+      if (existe) {
+        return res.status(409).json({ error: 'Ya existe una tarea con este título' });
+      }
+
+      const continuarInsercion = () => {
+        db.run(
+          'INSERT INTO tareas (titulo, descripcion, prioridad, fecha_vencimiento, categoria, favorita) VALUES (?, ?, ?, ?, ?, ?)',
+          [data.titulo, data.descripcion, data.prioridad, data.fecha_vencimiento, data.categoria, data.favorita],
+          function(err) {
+            if (err) {
+              return res.status(500).json({ error: err.message });
+            }
+            res.status(201).json({
+              id: this.lastID,
+              titulo: data.titulo,
+              descripcion: data.descripcion,
+              completada: 0,
+              fecha_creacion: new Date().toISOString(),
+              prioridad: data.prioridad,
+              fecha_vencimiento: data.fecha_vencimiento,
+              categoria: data.categoria,
+              favorita: data.favorita,
+            });
+          }
+        );
+      };
+
+      if (data.prioridad === 'alta') {
+        contarTareasPrioridadAltaPendientes(db, {}, (errConteo, total) => {
+          if (errConteo) {
+            return res.status(500).json({ error: errConteo.message });
+          }
+          if (total >= MAX_TAREAS_ALTA_PENDIENTES) {
+            return res.status(422).json({ error: `No puedes tener más de ${MAX_TAREAS_ALTA_PENDIENTES} tareas de prioridad alta pendientes` });
+          }
+          continuarInsercion();
+        });
+      } else {
         continuarInsercion();
-      });
-    } else {
-      continuarInsercion();
-    }
+      }
+    });
   });
-});
 
-// Actualizar una tarea
-app.put('/api/tareas/:id', (req, res) => {
-  const id = req.params.id;
-  const { titulo, descripcion, completada, prioridad, fecha_vencimiento, categoria } = req.body;
+  app.put('/api/tareas/:id', (req, res) => {
+    const id = req.params.id;
+    const { titulo, descripcion, completada, prioridad, fecha_vencimiento, categoria, favorita } = req.body;
 
-  const validacion = validarPayloadTarea({ titulo, descripcion, prioridad, fecha_vencimiento, categoria });
+    const validacion = validarPayloadTarea({ titulo, descripcion, prioridad, fecha_vencimiento, categoria, favorita });
 
-  if (validacion.error) {
-    return res.status(400).json({ error: validacion.error });
-  }
-
-  verificarTituloDuplicado({ titulo: validacion.data.titulo, excluirId: id }, (errDuplicado, existe) => {
-    if (errDuplicado) {
-      return res.status(500).json({ error: errDuplicado.message });
-    }
-    if (existe) {
-      return res.status(409).json({ error: 'Ya existe una tarea con este título' });
+    if (validacion.error) {
+      return res.status(400).json({ error: validacion.error });
     }
 
-    const ejecutarActualizacion = () => {
-      db.run(
-        'UPDATE tareas SET titulo = ?, descripcion = ?, completada = ?, prioridad = ?, fecha_vencimiento = ?, categoria = ? WHERE id = ?',
-        [validacion.data.titulo, validacion.data.descripcion, completada ? 1 : 0, validacion.data.prioridad, validacion.data.fecha_vencimiento, validacion.data.categoria, id],
-        function(err) {
-          if (err) {
-            return res.status(500).json({ error: err.message });
-          }
-          if (this.changes === 0) {
-            return res.status(404).json({ error: 'Tarea no encontrada' });
-          }
-          res.json({ message: 'Tarea actualizada exitosamente' });
-        }
-      );
-    };
+    verificarTituloDuplicado(db, { titulo: validacion.data.titulo, excluirId: id }, (errDuplicado, existe) => {
+      if (errDuplicado) {
+        return res.status(500).json({ error: errDuplicado.message });
+      }
+      if (existe) {
+        return res.status(409).json({ error: 'Ya existe una tarea con este título' });
+      }
 
-    if (validacion.data.prioridad === 'alta' && !completada) {
-      contarTareasPrioridadAltaPendientes({ excluirId: id }, (errConteo, total) => {
-        if (errConteo) {
-          return res.status(500).json({ error: errConteo.message });
-        }
-        if (total >= MAX_TAREAS_ALTA_PENDIENTES) {
-          return res.status(422).json({ error: `No puedes tener más de ${MAX_TAREAS_ALTA_PENDIENTES} tareas de prioridad alta pendientes` });
-        }
+      const ejecutarActualizacion = () => {
+        db.run(
+          'UPDATE tareas SET titulo = ?, descripcion = ?, completada = ?, prioridad = ?, fecha_vencimiento = ?, categoria = ?, favorita = ? WHERE id = ?',
+          [validacion.data.titulo, validacion.data.descripcion, completada ? 1 : 0, validacion.data.prioridad, validacion.data.fecha_vencimiento, validacion.data.categoria, validacion.data.favorita, id],
+          function(err) {
+            if (err) {
+              return res.status(500).json({ error: err.message });
+            }
+            if (this.changes === 0) {
+              return res.status(404).json({ error: 'Tarea no encontrada' });
+            }
+            res.json({ message: 'Tarea actualizada exitosamente' });
+          }
+        );
+      };
+
+      if (validacion.data.prioridad === 'alta' && !completada) {
+        contarTareasPrioridadAltaPendientes(db, { excluirId: id }, (errConteo, total) => {
+          if (errConteo) {
+            return res.status(500).json({ error: errConteo.message });
+          }
+          if (total >= MAX_TAREAS_ALTA_PENDIENTES) {
+            return res.status(422).json({ error: `No puedes tener más de ${MAX_TAREAS_ALTA_PENDIENTES} tareas de prioridad alta pendientes` });
+          }
+          ejecutarActualizacion();
+        });
+      } else {
         ejecutarActualizacion();
+      }
+    });
+  });
+
+  app.delete('/api/tareas/:id', (req, res) => {
+    const id = req.params.id;
+    db.run('DELETE FROM tareas WHERE id = ?', [id], function(err) {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Tarea no encontrada' });
+      }
+      res.json({ message: 'Tarea eliminada exitosamente' });
+    });
+  });
+
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', message: 'Servidor funcionando correctamente' });
+  });
+
+  const close = () => new Promise((resolve, reject) => {
+    db.close((err) => {
+      if (err) {
+        return reject(err);
+      }
+      resolve();
+    });
+  });
+
+  return {
+    app,
+    db,
+    ready,
+    close,
+    config: { dbPath },
+  };
+};
+
+if (require.main === module) {
+  const PORT = process.env.PORT || 3001;
+  const { app, ready, db, config } = createServer({
+    dbPath: process.env.DB_PATH || path.join(__dirname, 'database.sqlite'),
+  });
+
+  ready
+    .then(() => {
+      const server = app.listen(PORT, () => {
+        console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+        console.log(`📊 Base de datos: ${config.dbPath}`);
       });
-    } else {
-      ejecutarActualizacion();
-    }
-  });
-});
 
-// Eliminar una tarea
-app.delete('/api/tareas/:id', (req, res) => {
-  const id = req.params.id;
-  db.run('DELETE FROM tareas WHERE id = ?', [id], function(err) {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    if (this.changes === 0) {
-      return res.status(404).json({ error: 'Tarea no encontrada' });
-    }
-    res.json({ message: 'Tarea eliminada exitosamente' });
-  });
-});
+      const shutdown = () => {
+        console.log('🚦 Cerrando servidor...');
+        server.close(() => {
+          db.close((err) => {
+            if (err) {
+              console.error(err.message);
+            }
+            console.log('📦 Conexión a la base de datos cerrada.');
+            process.exit(0);
+          });
+        });
+      };
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Servidor funcionando correctamente' });
-});
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+    })
+    .catch((err) => {
+      console.error('No se pudo iniciar el servidor:', err);
+      process.exit(1);
+    });
+}
 
-// Iniciar servidor
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
-  console.log(`📊 Base de datos: ${dbPath}`);
-});
-
-// Cerrar conexión a la base de datos al cerrar la aplicación
-process.on('SIGINT', () => {
-  db.close((err) => {
-    if (err) {
-      console.error(err.message);
-    }
-    console.log('📦 Conexión a la base de datos cerrada.');
-    process.exit(0);
-  });
-});
-
-
+module.exports = {
+  createServer,
+  validarPayloadTarea,
+  normalizarPrioridad,
+  parsearFechaVencimiento,
+  constantes: {
+    PRIORIDADES_VALIDAS,
+    MAX_DESCRIPCION,
+    MAX_CATEGORIA,
+    MAX_TAREAS_ALTA_PENDIENTES,
+    MAX_PROXIMAS_VENCIMIENTOS,
+  },
+};

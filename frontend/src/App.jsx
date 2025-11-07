@@ -11,7 +11,8 @@ function App() {
     descripcion: '',
     prioridad: 'media',
     fecha_vencimiento: '',
-    categoria: ''
+    categoria: '',
+    favorita: false
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -19,8 +20,22 @@ function App() {
     estado: 'todas',
     prioridad: 'todas',
     mostrarVencidas: false,
-    orden: 'recientes'
+    orden: 'recientes',
+    q: '',
+    soloFavoritas: false,
+    categoria: 'todas'
   })
+
+  const [resumen, setResumen] = useState({
+    total: 0,
+    pendientes: 0,
+    completadas: 0,
+    favoritas: 0,
+    vencidas: 0,
+    proximas: [],
+    categorias: []
+  })
+  const [busqueda, setBusqueda] = useState('')
 
   const construirQuery = useCallback(() => {
     const params = new URLSearchParams()
@@ -37,6 +52,15 @@ function App() {
       params.append('orden', 'vencimiento_asc')
     } else if (filtros.orden === 'vencimiento_desc') {
       params.append('orden', 'vencimiento_desc')
+    }
+    if (filtros.q.trim()) {
+      params.append('q', filtros.q.trim())
+    }
+    if (filtros.soloFavoritas) {
+      params.append('favoritas', 'true')
+    }
+    if (filtros.categoria && filtros.categoria !== 'todas') {
+      params.append('categoria', filtros.categoria)
     }
 
     const query = params.toString()
@@ -58,10 +82,32 @@ function App() {
     }
   }, [construirQuery])
 
-  // Cargar tareas al iniciar o al cambiar filtros
+  const cargarResumen = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/tareas/resumen`)
+      const data = response.data || {}
+      setResumen({
+        total: data.total || 0,
+        pendientes: data.pendientes || 0,
+        completadas: data.completadas || 0,
+        favoritas: data.favoritas || 0,
+        vencidas: data.vencidas || 0,
+        proximas: data.proximas || [],
+        categorias: data.categorias || []
+      })
+    } catch (err) {
+      console.error('Error al cargar el resumen', err)
+    }
+  }, [])
+
+  const cargarTodo = useCallback(async () => {
+    await Promise.all([cargarTareas(), cargarResumen()])
+  }, [cargarTareas, cargarResumen])
+
+  // Cargar tareas y resumen al iniciar o al cambiar filtros
   useEffect(() => {
-    cargarTareas()
-  }, [cargarTareas])
+    cargarTodo()
+  }, [cargarTodo])
 
   const agregarTarea = async (e) => {
     e.preventDefault()
@@ -76,16 +122,18 @@ function App() {
         categoria: nuevaTarea.categoria.trim() || null,
         fecha_vencimiento: nuevaTarea.fecha_vencimiento
           ? new Date(nuevaTarea.fecha_vencimiento).toISOString()
-          : null
+          : null,
+        favorita: nuevaTarea.favorita
       }
       await axios.post(`${API_URL}/api/tareas`, payload)
-      await cargarTareas()
+      await cargarTodo()
       setNuevaTarea({
         titulo: '',
         descripcion: '',
         prioridad: 'media',
         fecha_vencimiento: '',
-        categoria: ''
+        categoria: '',
+        favorita: false
       })
       setError(null)
     } catch (err) {
@@ -105,9 +153,11 @@ function App() {
         completada: !completada,
         prioridad: tarea.prioridad,
         fecha_vencimiento: tarea.fecha_vencimiento,
-        categoria: tarea.categoria
+        categoria: tarea.categoria,
+        favorita: tarea.favorita === 1
       })
-      cargarTareas()
+      await cargarTodo()
+      setError(null)
     } catch (err) {
       setError('Error al actualizar la tarea')
       console.error(err)
@@ -120,9 +170,31 @@ function App() {
     try {
       await axios.delete(`${API_URL}/api/tareas/${id}`)
       setTareas(tareas.filter(t => t.id !== id))
+      cargarResumen()
       setError(null)
     } catch (err) {
       setError('Error al eliminar la tarea')
+      console.error(err)
+    }
+  }
+
+  const toggleFavorita = async (id) => {
+    try {
+      const tarea = tareas.find(t => t.id === id)
+      if (!tarea) return
+      await axios.put(`${API_URL}/api/tareas/${id}`, {
+        titulo: tarea.titulo,
+        descripcion: tarea.descripcion || '',
+        completada: tarea.completada === 1,
+        prioridad: tarea.prioridad,
+        fecha_vencimiento: tarea.fecha_vencimiento,
+        categoria: tarea.categoria,
+        favorita: tarea.favorita === 1 ? 0 : 1
+      })
+      await cargarTodo()
+      setError(null)
+    } catch (err) {
+      setError('Error al actualizar la tarea')
       console.error(err)
     }
   }
@@ -142,6 +214,19 @@ function App() {
       [campo]: valor
     }))
   }
+
+  const aplicarBusqueda = () => {
+    actualizarFiltro('q', busqueda)
+  }
+
+  const limpiarBusqueda = () => {
+    setBusqueda('')
+    actualizarFiltro('q', '')
+  }
+
+  useEffect(() => {
+    setBusqueda(filtros.q || '')
+  }, [filtros.q])
 
   const prioridadBadge = (prioridad) => {
     switch (prioridad) {
@@ -198,7 +283,82 @@ function App() {
           </div>
         </div>
 
+        <section className="resumen-dashboard">
+          <div className="resumen-card">
+            <h3>Resumen general</h3>
+            <div className="resumen-grid">
+              <div>
+                <span className="dato">{resumen.total}</span>
+                <span className="etiqueta">Registradas</span>
+              </div>
+              <div>
+                <span className="dato">{resumen.pendientes}</span>
+                <span className="etiqueta">Pendientes</span>
+              </div>
+              <div>
+                <span className="dato">{resumen.completadas}</span>
+                <span className="etiqueta">Completadas</span>
+              </div>
+              <div>
+                <span className="dato">{resumen.favoritas}</span>
+                <span className="etiqueta">Favoritas</span>
+              </div>
+              <div>
+                <span className="dato">{resumen.vencidas}</span>
+                <span className="etiqueta">Vencidas</span>
+              </div>
+            </div>
+          </div>
+          <div className="resumen-card">
+            <h3>Próximos vencimientos</h3>
+            {resumen.proximas.length === 0 ? (
+              <p className="detalle">No hay vencimientos cercanos</p>
+            ) : (
+              <ul className="lista-compacta">
+                {resumen.proximas.map((item) => (
+                  <li key={item.id}>
+                    <strong>{item.titulo}</strong>
+                    <span>{formatearFecha(item.fecha_vencimiento)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="resumen-card">
+            <h3>Top categorías</h3>
+            {resumen.categorias.length === 0 ? (
+              <p className="detalle">Sin categorías registradas</p>
+            ) : (
+              <ul className="lista-compacta">
+                {resumen.categorias.map(({ categoria, cantidad }) => (
+                  <li key={categoria}>
+                    <strong>{categoria}</strong>
+                    <span>{cantidad} tareas</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
         <section className="filtros">
+          <div className="filtro-group filtro-busqueda">
+            <label htmlFor="filtroBusqueda">Buscar</label>
+            <input
+              id="filtroBusqueda"
+              type="search"
+              placeholder="Título o descripción..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  aplicarBusqueda()
+                }
+              }}
+            />
+          </div>
+
           <div className="filtro-group">
             <label htmlFor="filtroEstado">Estado</label>
             <select
@@ -247,6 +407,34 @@ function App() {
             />
             Mostrar solo vencidas
           </label>
+
+          <label className="toggle-favoritas">
+            <input
+              type="checkbox"
+              checked={filtros.soloFavoritas}
+              onChange={(e) => actualizarFiltro('soloFavoritas', e.target.checked)}
+            />
+            Solo favoritas
+          </label>
+
+          <div className="filtro-group">
+            <label htmlFor="filtroCategoria">Categoría</label>
+            <input
+              id="filtroCategoria"
+              type="text"
+              placeholder="Trabajo, Personal..."
+              value={filtros.categoria === 'todas' ? '' : filtros.categoria}
+              onChange={(e) => actualizarFiltro('categoria', e.target.value || 'todas')}
+            />
+          </div>
+          <div className="filtro-acciones">
+            <button type="button" className="btn-filtro" onClick={aplicarBusqueda}>
+              Aplicar búsqueda
+            </button>
+            <button type="button" className="btn-filtro limpiar" onClick={limpiarBusqueda}>
+              Limpiar
+            </button>
+          </div>
         </section>
 
         <form onSubmit={agregarTarea} className="form-nueva-tarea">
@@ -297,6 +485,17 @@ function App() {
                 onChange={(e) => setNuevaTarea({ ...nuevaTarea, categoria: e.target.value })}
               />
             </div>
+            <div className="campo campo-favorita">
+              <label htmlFor="favorita">
+                <input
+                  id="favorita"
+                  type="checkbox"
+                  checked={nuevaTarea.favorita}
+                  onChange={(e) => setNuevaTarea({ ...nuevaTarea, favorita: e.target.checked })}
+                />
+                Marcar como favorita
+              </label>
+            </div>
           </div>
           <button type="submit" className="btn-agregar" disabled={loading}>
             {loading ? 'Agregando...' : '+ Agregar Tarea'}
@@ -328,6 +527,21 @@ function App() {
                       {tarea.titulo}
                     </h3>
                     <div className="detalle-linea">
+                      <button
+                        type="button"
+                        className={`badge badge-favorita ${tarea.favorita === 1 ? 'activa' : ''}`}
+                        onClick={() => toggleFavorita(tarea.id)}
+                        aria-label={tarea.favorita === 1 ? 'Quitar de favoritas' : 'Marcar como favorita'}
+                      >
+                        {tarea.favorita === 1 ? '★ Favorita' : '☆ Favorita'}
+                      </button>
+                      <button
+                        type="button"
+                        className={`badge badge-estado ${tarea.completada === 1 ? 'completa' : ''}`}
+                        onClick={() => toggleCompletada(tarea.id, tarea.completada)}
+                      >
+                        {tarea.completada === 1 ? '✔ Completada' : '○ Pendiente'}
+                      </button>
                       <span className={`badge ${prioridadBadge(tarea.prioridad)}`}>
                         Prioridad {tarea.prioridad}
                       </span>
