@@ -50,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ROLLUP_SKIP_NATIVE: 'true'
+      ROLLUP_SKIP_NODE_DOWNLOAD: 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -88,6 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ROLLUP_SKIP_NATIVE: 'true'
+      ROLLUP_SKIP_NODE_DOWNLOAD: 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
