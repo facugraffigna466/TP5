@@ -115,14 +115,16 @@ function App() {
 
     try {
       setLoading(true)
+      const fechaNormalizada = nuevaTarea.fecha_vencimiento
+        ? new Date(`${nuevaTarea.fecha_vencimiento}T23:59:59`).toISOString()
+        : null
+
       const payload = {
         titulo: nuevaTarea.titulo.trim(),
         descripcion: nuevaTarea.descripcion.trim(),
         prioridad: nuevaTarea.prioridad,
         categoria: nuevaTarea.categoria.trim() || null,
-        fecha_vencimiento: nuevaTarea.fecha_vencimiento
-          ? new Date(nuevaTarea.fecha_vencimiento).toISOString()
-          : null,
+        fecha_vencimiento: fechaNormalizada,
         favorita: nuevaTarea.favorita
       }
       await axios.post(`${API_URL}/api/tareas`, payload)

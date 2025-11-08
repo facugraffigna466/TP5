@@ -229,6 +229,22 @@ Los tests cubren:
 - Toggle de completado y favoritas, eliminación con confirmación y badges de prioridad/vencimiento/categoría.
 - Actualización del dashboard de resumen (próximas tareas y top de categorías).
 
+### End-to-End (Cypress)
+```bash
+cd frontend
+npm install             # instala cypress y start-server-and-test
+npm run cypress:open    # modo GUI
+npm run cypress:run     # modo headless
+npm run e2e             # levanta el dev server y ejecuta el suite
+```
+
+> ⚠️ Necesitás que el backend (`npm run dev` en `/backend`) esté corriendo antes de ejecutar los e2e, o bien ajustar el script `npm run e2e` para levantarlo automáticamente.
+
+Los escenarios end-to-end validan:
+- Creación de tareas desde la UI, marcado como favorita y alternancia de estado.
+- Uso de búsqueda y filtros “Solo favoritas”.
+- Limpieza automática del listado entre pruebas mediante llamadas reales a `/api/tareas`.
+
 > 📈 Ambos entornos generan reportes de cobertura HTML en sus respectivas carpetas `coverage/`.
 
 ## 🔧 Tecnologías Utilizadas
