@@ -48,6 +48,8 @@ jobs:
   frontend-tests:
     name: Frontend - Unit Tests
     runs-on: ubuntu-latest
+    env:
+      ROLLUP_SKIP_NATIVE: 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,6 +86,8 @@ jobs:
       - backend-tests
       - frontend-tests
     runs-on: ubuntu-latest
+    env:
+      ROLLUP_SKIP_NATIVE: 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
