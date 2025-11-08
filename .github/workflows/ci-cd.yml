@@ -15,7 +15,6 @@ jobs:
   backend-tests:
     name: Backend - Unit & Integration Tests
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,7 +64,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # 🔹 Solución al error de Rollup
+      # 🔹 Soluciona error de Rollup
       - name: Clean npm cache and reinstall
         run: |
           rm -rf node_modules package-lock.json
@@ -89,83 +88,17 @@ jobs:
           path: frontend/coverage
 
 
-  e2e-tests:
-    name: End-to-End (Cypress)
-    needs:
-      - backend-tests
-      - frontend-tests
-    runs-on: ubuntu-latest
-    env:
-      ROLLUP_SKIP_NATIVE: 'true'
-      ROLLUP_SKIP_NODE_DOWNLOAD: 'true'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install backend dependencies
-        run: npm ci
-        working-directory: backend
-
-      - name: Install frontend dependencies
-        run: npm install
-        working-directory: frontend
-
-      - name: Start backend
-        run: |
-          PORT=3001 npm start &
-          echo $! > $RUNNER_TEMP/backend.pid
-        working-directory: backend
-
-      - name: Wait for backend
-        run: npx wait-on http://127.0.0.1:3001/health
-
-      - name: Start frontend
-        run: |
-          npm run dev -- --host 0.0.0.0 --port 5173 &
-          echo $! > $RUNNER_TEMP/frontend.pid
-        working-directory: frontend
-
-      - name: Wait for frontend
-        run: npx wait-on http://127.0.0.1:5173
-
-      - name: Run Cypress
-        run: npx cypress run --config baseUrl=http://127.0.0.1:5173
-        working-directory: frontend
-
-      - name: Stop services
-        if: always()
-        run: |
-          if [ -f "$RUNNER_TEMP/frontend.pid" ]; then
-            kill $(cat "$RUNNER_TEMP/frontend.pid") || true
-          fi
-          if [ -f "$RUNNER_TEMP/backend.pid" ]; then
-            kill $(cat "$RUNNER_TEMP/backend.pid") || true
-          fi
-
-      - name: Upload Cypress artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cypress-results
-          path: |
-            frontend/cypress/screenshots
-            frontend/cypress/videos
-          if-no-files-found: ignore
-
-
   deploy-qa:
     name: Deploy QA
     needs:
-      - e2e-tests
+      - backend-tests
+      - frontend-tests
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: qa
+
+    outputs:
+      qa_url: ${{ steps.netlify.outputs.qa_url }}
 
     steps:
       - name: Checkout
@@ -199,27 +132,70 @@ jobs:
         working-directory: frontend
 
       - name: Deploy frontend to Netlify (QA)
+        id: netlify
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN_QA }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID_QA }}
         run: |
           if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
             echo "Netlify QA secrets not configured. Skipping frontend deploy."
+            echo "qa_url=https://fake-qa-url" >> $GITHUB_OUTPUT
             exit 0
           fi
-          npx netlify deploy \
+          DEPLOY_URL=$(npx netlify deploy \
             --auth "$NETLIFY_AUTH_TOKEN" \
             --site "$NETLIFY_SITE_ID" \
             --dir dist \
             --message "QA deploy $GITHUB_SHA" \
-            --json
+            --json | jq -r '.deploy_url')
+          echo "qa_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
         working-directory: frontend
+
+
+  e2e-tests:
+    name: End-to-End (Cypress on QA)
+    needs: deploy-qa
+    runs-on: ubuntu-latest
+    env:
+      QA_URL: ${{ needs.deploy-qa.outputs.qa_url }}
+      ROLLUP_SKIP_NATIVE: 'true'
+      ROLLUP_SKIP_NODE_DOWNLOAD: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Cypress
+        run: npm install
+        working-directory: frontend
+
+      - name: Wait for QA deploy to be live
+        run: npx wait-on $QA_URL
+
+      - name: Run Cypress tests against QA
+        run: npx cypress run --config baseUrl=$QA_URL
+        working-directory: frontend
+
+      - name: Upload Cypress artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-results
+          path: |
+            frontend/cypress/screenshots
+            frontend/cypress/videos
+          if-no-files-found: ignore
 
 
   deploy-production:
     name: Deploy Production
     needs:
-      - deploy-qa
+      - e2e-tests
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
