@@ -158,7 +158,8 @@ describe('App - Gestión de Tareas', () => {
     await user.type(screen.getByPlaceholderText('Título de la tarea...'), 'Nueva tarea')
     await user.type(screen.getByPlaceholderText('Descripción (opcional)...'), 'Algo')
     await user.selectOptions(screen.getByLabelText('Prioridad', { selector: '#prioridad' }), 'media')
-    await user.click(screen.getByRole('button', { name: /\+ Agregar Tarea/i }))
+    const botonAgregar = await screen.findByRole('button', { name: /\+ Agregar Tarea/i })
+    await user.click(botonAgregar)
 
     await waitFor(() => {
       expect(mockAxios.post).toHaveBeenCalledTimes(1)
@@ -178,7 +179,8 @@ describe('App - Gestión de Tareas', () => {
     await waitFor(() => expect(mockAxios.get).toHaveBeenCalled())
 
     await user.type(screen.getByPlaceholderText('Título de la tarea...'), 'Fallida')
-    await user.click(screen.getByRole('button', { name: /\+ Agregar Tarea/i }))
+    const botonAgregar = await screen.findByRole('button', { name: /\+ Agregar Tarea/i })
+    await user.click(botonAgregar)
 
     expect(await screen.findByText(/Error al crear la tarea/)).toBeInTheDocument()
   })
@@ -287,7 +289,8 @@ describe('App - Gestión de Tareas', () => {
 
     await waitFor(() => expect(mockAxios.get).toHaveBeenCalledTimes(2))
 
-    await user.click(screen.getByRole('button', { name: /\+ Agregar Tarea/i }))
+    const botonAgregar = await screen.findByRole('button', { name: /\+ Agregar Tarea/i })
+    await user.click(botonAgregar)
 
     expect(mockAxios.post).not.toHaveBeenCalled()
   })
@@ -317,7 +320,8 @@ describe('App - Gestión de Tareas', () => {
     await user.selectOptions(screen.getByLabelText('Prioridad', { selector: '#prioridad' }), 'alta')
     await user.click(favoritaCheckbox)
 
-    await user.click(screen.getByRole('button', { name: /\+ Agregar Tarea/i }))
+    const botonAgregar = await screen.findByRole('button', { name: /\+ Agregar Tarea/i })
+    await user.click(botonAgregar)
 
     await waitFor(() => expect(mockAxios.post).toHaveBeenCalled())
 
@@ -430,7 +434,7 @@ describe('App - Gestión de Tareas', () => {
 
     await waitFor(() => expect(mockAxios.get).toHaveBeenCalled())
 
-    const boton = screen.getByRole('button', { name: /\+ Agregar Tarea/i })
+    const boton = await screen.findByRole('button', { name: /\+ Agregar Tarea/i })
     await user.type(screen.getByPlaceholderText('Título de la tarea...'), 'Loading test')
     await user.click(boton)
 
