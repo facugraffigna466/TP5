@@ -1,0 +1,256 @@
+name: CI-CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  backend-tests:
+    name: Backend - Unit & Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Run tests
+        run: npm test
+        working-directory: backend
+
+      - name: Generate coverage
+        run: npm run test:coverage
+        working-directory: backend
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage
+
+  frontend-tests:
+    name: Frontend - Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run tests
+        run: npm test
+        working-directory: frontend
+
+      - name: Generate coverage
+        run: npm run test:coverage
+        working-directory: frontend
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+
+  e2e-tests:
+    name: End-to-End (Cypress)
+    needs:
+      - backend-tests
+      - frontend-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Start backend
+        run: |
+          PORT=3001 npm start &
+          echo $! > $RUNNER_TEMP/backend.pid
+        working-directory: backend
+
+      - name: Wait for backend
+        run: npx wait-on http://127.0.0.1:3001/health
+
+      - name: Start frontend
+        run: |
+          npm run dev -- --host 0.0.0.0 --port 5173 &
+          echo $! > $RUNNER_TEMP/frontend.pid
+        working-directory: frontend
+
+      - name: Wait for frontend
+        run: npx wait-on http://127.0.0.1:5173
+
+      - name: Run Cypress
+        run: npx cypress run --config baseUrl=http://127.0.0.1:5173
+        working-directory: frontend
+
+      - name: Stop services
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/frontend.pid" ]; then
+            kill $(cat "$RUNNER_TEMP/frontend.pid") || true
+          fi
+          if [ -f "$RUNNER_TEMP/backend.pid" ]; then
+            kill $(cat "$RUNNER_TEMP/backend.pid") || true
+          fi
+
+      - name: Upload Cypress artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-results
+          path: |
+            frontend/cypress/screenshots
+            frontend/cypress/videos
+          if-no-files-found: ignore
+
+  deploy-qa:
+    name: Deploy QA
+    needs:
+      - e2e-tests
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: qa
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Trigger Render deploy (Backend QA)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_QA_SERVICE_ID: ${{ secrets.RENDER_QA_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_QA_SERVICE_ID" ]; then
+            echo "Render QA secrets not configured. Skipping backend deploy."
+            exit 0
+          fi
+          curl -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            https://api.render.com/v1/services/$RENDER_QA_SERVICE_ID/deploys
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install & build frontend
+        run: |
+          npm ci
+          npm run build
+        working-directory: frontend
+
+      - name: Deploy frontend to Netlify (QA)
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN_QA }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID_QA }}
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
+            echo "Netlify QA secrets not configured. Skipping frontend deploy."
+            exit 0
+          fi
+          npx netlify deploy \
+            --auth "$NETLIFY_AUTH_TOKEN" \
+            --site "$NETLIFY_SITE_ID" \
+            --dir dist \
+            --message "QA deploy $GITHUB_SHA" \
+            --json
+        working-directory: frontend
+
+  deploy-production:
+    name: Deploy Production
+    needs:
+      - deploy-qa
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Trigger Render deploy (Backend PROD)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_PROD_SERVICE_ID: ${{ secrets.RENDER_PROD_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_PROD_SERVICE_ID" ]; then
+            echo "Render PROD secrets not configured. Skipping backend deploy."
+            exit 0
+          fi
+          curl -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            https://api.render.com/v1/services/$RENDER_PROD_SERVICE_ID/deploys
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install & build frontend
+        run: |
+          npm ci
+          npm run build
+        working-directory: frontend
+
+      - name: Deploy frontend to Netlify (PROD)
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN_PROD }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID_PROD }}
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
+            echo "Netlify PROD secrets not configured. Skipping frontend deploy."
+            exit 0
+          fi
+          npx netlify deploy \
+            --auth "$NETLIFY_AUTH_TOKEN" \
+            --site "$NETLIFY_SITE_ID" \
+            --dir dist \
+            --prod \
+            --message "PROD deploy $GITHUB_SHA" \
+            --json
+        working-directory: frontend
+
