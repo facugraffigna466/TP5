@@ -252,5 +252,5 @@ Los escenarios end-to-end validan:
 - **Frontend**: React 18, Vite, Axios
 - **Backend**: Node.js, Express, SQLite3, Jest, Supertest
 - **Testing Frontend**: Vitest, React Testing Library, Jest DOM
-- **Estilos**: CSS puro con diseño moderno
+- **Estilos**: CSS puro con diseño moderno.
 
