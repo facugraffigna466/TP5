@@ -1,4 +1,4 @@
-const API_BASE = '/api/tareas'
+const API_BASE = `${Cypress.env('API_URL') || ''}/api/tareas`
 
 const limpiarTareas = () => {
   cy.request(API_BASE).then(({ body }) => {

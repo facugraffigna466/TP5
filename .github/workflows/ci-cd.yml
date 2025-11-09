@@ -181,6 +181,13 @@ jobs:
         run: npm install
         working-directory: frontend
 
+      - name: Wait for backend (Render API)
+        run: |
+          until curl --output /dev/null --silent --head --fail https://tp5-f4vq.onrender.com/api/tareas; do
+            echo "Esperando que la API esté lista..."
+            sleep 5
+          done
+
       - name: Wait for QA deploy to be live
         run: npx wait-on $QA_URL
 
@@ -188,7 +195,9 @@ jobs:
         env:
           CYPRESS_BASE_URL: https://vermillion-biscotti-218683.netlify.app
           API_URL: https://tp5-f4vq.onrender.com
-        run: npx cypress run --config baseUrl=$CYPRESS_BASE_URL
+        run: |
+          echo "Corriendo Cypress contra frontend QA y backend Render..."
+          npx cypress run --config baseUrl=$CYPRESS_BASE_URL,env.API_URL=$API_URL
         working-directory: frontend
 
       - name: Upload Cypress artifacts
