@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "start": "vite build && vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -13,6 +14,7 @@
     "cypress:run": "cypress run",
     "e2e": "start-server-and-test \"npm run dev\" http://localhost:5173 \"cypress run\""
   },
+
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
