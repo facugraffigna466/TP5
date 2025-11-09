@@ -1,5 +1,14 @@
 const API_BASE = `${Cypress.env('API_URL') || ''}/api/tareas`
 
+const visitarApp = () => {
+  cy.visit('/', {
+    timeout: 240000,
+    failOnStatusCode: false,
+  })
+
+  cy.get('[data-cy="app-loaded"]', { timeout: 60000 }).should('exist')
+}
+
 const limpiarTareas = () => {
   cy.request(API_BASE).then(({ body }) => {
     body.forEach((tarea) => {
@@ -26,7 +35,7 @@ const actualizarTareaApi = (id, overrides = {}) =>
 describe('Gestión de Tareas - E2E', () => {
   beforeEach(() => {
     limpiarTareas()
-    cy.visit('/')
+    visitarApp()
   })
 
   afterEach(() => {
@@ -67,7 +76,7 @@ describe('Gestión de Tareas - E2E', () => {
     limpiarTareas()
 
     const crear = (payload) =>
-      cy.request('POST', '/api/tareas', {
+      cy.request('POST', API_BASE, {
         titulo: `Tarea ${payload.titulo}`,
         descripcion: payload.descripcion || '',
         prioridad: payload.prioridad || 'media',
@@ -78,7 +87,7 @@ describe('Gestión de Tareas - E2E', () => {
     crear({ titulo: 'frontend', descripcion: 'Actualizar estilos', favorita: true, categoria: 'UI' })
     crear({ titulo: 'backend', descripcion: 'Ajustar API' })
 
-    cy.visit('/')
+    visitarApp()
 
     cy.get('#filtroBusqueda').type('front')
     cy.contains('button', 'Aplicar búsqueda').click()

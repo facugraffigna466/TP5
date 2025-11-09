@@ -253,7 +253,7 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app" data-cy="app-loaded">
       <div className="container">
         <header>
           <h1>📋 Gestión de Tareas</h1>
