@@ -187,10 +187,14 @@ jobs:
 
       - name: Wait for backend (Render API)
         run: |
-          until curl --output /dev/null --silent --head --fail https://tp5-f4vq.onrender.com/api/tareas; do
-            echo "Esperando que la API esté lista..."
+          echo "Esperando que la API de Render responda..."
+          if ! timeout 240 bash -c 'until curl --output /dev/null --silent --head --fail https://tp5-f4vq.onrender.com/api/tareas; do
+            echo "  > API todavía no responde, reintentando en 5s..."
             sleep 5
-          done
+          done'; then
+            echo "❌ La API no respondió dentro del tiempo esperado."
+            exit 1
+          fi
 
       - name: Wait for QA deploy to be live
         run: npx wait-on $QA_URL
