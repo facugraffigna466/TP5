@@ -155,6 +155,7 @@ jobs:
             --dir dist \
             --message "QA deploy $GITHUB_SHA" \
             --json | jq -r '.deploy_url')
+          echo "::notice::QA URL => $DEPLOY_URL"
           echo "qa_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
         working-directory: frontend
 
