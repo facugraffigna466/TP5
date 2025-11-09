@@ -205,6 +205,9 @@ jobs:
             echo "⚠️  QA_URL no disponible; usando sitio publicado"
             export CYPRESS_BASE_URL=https://vermillion-biscotti-218683.netlify.app
           fi
+          if [ -n "$CYPRESS_API_URL" ]; then
+            export CYPRESS_API_URL="$CYPRESS_API_URL"
+          fi
           npx cypress run
         working-directory: frontend
 
