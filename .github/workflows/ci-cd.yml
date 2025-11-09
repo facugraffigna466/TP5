@@ -185,7 +185,10 @@ jobs:
         run: npx wait-on $QA_URL
 
       - name: Run Cypress tests against QA
-        run: npx cypress run --config baseUrl=$QA_URL
+        env:
+          CYPRESS_BASE_URL: https://vermillion-biscotti-218683.netlify.app
+          API_URL: https://tp5-f4vq.onrender.com
+        run: npx cypress run --config baseUrl=$CYPRESS_BASE_URL
         working-directory: frontend
 
       - name: Upload Cypress artifacts
