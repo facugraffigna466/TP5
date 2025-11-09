@@ -97,6 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: qa
     env:
+      QA_PREVIEW_URL: ""
       ROLLUP_SKIP_NATIVE: 'true'
       ROLLUP_SKIP_NODE_DOWNLOAD: 'true'
 
@@ -155,14 +156,20 @@ jobs:
             echo "qa_url=https://fake-qa-url" >> $GITHUB_OUTPUT
             exit 0
           fi
-          DEPLOY_URL=$(npx netlify deploy \
+          DEPLOY_RESPONSE=$(npx netlify deploy \
             --auth "$NETLIFY_AUTH_TOKEN_QA" \
             --site "$NETLIFY_SITE_ID_QA" \
             --dir dist \
             --message "QA deploy $GITHUB_SHA" \
-            --json | jq -r '.deploy_url')
+            --json)
+          DEPLOY_URL=$(echo "$DEPLOY_RESPONSE" | jq -r '.deploy_url')
+          IF_PUBLISHED=$(echo "$DEPLOY_RESPONSE" | jq -r '.published_deploy')
+          if [ "$IF_PUBLISHED" = "true" ]; then
+            DEPLOY_URL=$(echo "$DEPLOY_RESPONSE" | jq -r '.url')
+          fi
           echo "::notice::QA URL => $DEPLOY_URL"
           echo "qa_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "QA_PREVIEW_URL=$DEPLOY_URL" >> $GITHUB_ENV
         working-directory: frontend
 
 
@@ -171,7 +178,6 @@ jobs:
     needs: deploy-qa
     runs-on: ubuntu-latest
     env:
-      QA_URL: ${{ needs.deploy-qa.outputs.qa_url }}
       ROLLUP_SKIP_NATIVE: 'true'
       ROLLUP_SKIP_NODE_DOWNLOAD: 'true'
 
@@ -200,17 +206,30 @@ jobs:
           fi
 
       - name: Wait for QA deploy to be live
-        run: npx wait-on $QA_URL
+        run: |
+          if [ -z "$QA_URL" ] || [ "$QA_URL" = "https://fake-qa-url" ]; then
+            echo "QA URL no disponible. Usando sitio publicado para la espera."
+            QA_WAIT_URL=https://vermillion-biscotti-218683.netlify.app
+          else
+            QA_WAIT_URL=$QA_URL
+          fi
+          echo "Esperando a que $QA_WAIT_URL esté disponible..."
+          npx wait-on "$QA_WAIT_URL"
+        env:
+          QA_URL: ${{ env.QA_PREVIEW_URL }}
 
       - name: Run Cypress tests against QA
         env:
-          CYPRESS_BASE_URL: ${{ env.QA_URL }}
+          CYPRESS_BASE_URL: ${{ env.QA_PREVIEW_URL }}
           CYPRESS_API_URL: https://tp5-f4vq.onrender.com
         run: |
           echo "Corriendo Cypress contra frontend QA ($CYPRESS_BASE_URL) y backend Render..."
           if [ -z "$CYPRESS_BASE_URL" ] || [ "$CYPRESS_BASE_URL" = "https://fake-qa-url" ]; then
             echo "⚠️  QA_URL no disponible; usando sitio publicado"
             export CYPRESS_BASE_URL=https://vermillion-biscotti-218683.netlify.app
+          else
+            echo "QA_URL obtenido de deploy: $CYPRESS_BASE_URL"
+          fi
           fi
           if [ -n "$CYPRESS_API_URL" ]; then
             export CYPRESS_API_URL="$CYPRESS_API_URL"
