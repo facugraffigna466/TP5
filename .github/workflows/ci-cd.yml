@@ -197,11 +197,15 @@ jobs:
 
       - name: Run Cypress tests against QA
         env:
-          CYPRESS_BASE_URL: https://vermillion-biscotti-218683.netlify.app
-          API_URL: https://tp5-f4vq.onrender.com
+          CYPRESS_BASE_URL: ${{ env.QA_URL }}
+          CYPRESS_API_URL: https://tp5-f4vq.onrender.com
         run: |
-          echo "Corriendo Cypress contra frontend QA y backend Render..."
-          npx cypress run --config baseUrl=$CYPRESS_BASE_URL,env.API_URL=$API_URL
+          echo "Corriendo Cypress contra frontend QA ($CYPRESS_BASE_URL) y backend Render..."
+          if [ -z "$CYPRESS_BASE_URL" ] || [ "$CYPRESS_BASE_URL" = "https://fake-qa-url" ]; then
+            echo "⚠️  QA_URL no disponible; usando sitio publicado"
+            export CYPRESS_BASE_URL=https://vermillion-biscotti-218683.netlify.app
+          fi
+          npx cypress run
         working-directory: frontend
 
       - name: Upload Cypress artifacts
