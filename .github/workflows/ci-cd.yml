@@ -132,6 +132,9 @@ jobs:
           npm install
         working-directory: frontend
 
+      - name: Set VITE_API_URL for QA build
+        run: echo "VITE_API_URL=https://tp5-f4vq.onrender.com" >> $GITHUB_ENV
+
       - name: Install & build frontend
         run: |
           npm install
