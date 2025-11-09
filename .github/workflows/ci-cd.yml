@@ -96,6 +96,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: qa
+    env:
+      ROLLUP_SKIP_NATIVE: 'true'
+      ROLLUP_SKIP_NODE_DOWNLOAD: 'true'
 
     outputs:
       qa_url: ${{ steps.netlify.outputs.qa_url }}
@@ -233,6 +236,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
+    env:
+      ROLLUP_SKIP_NATIVE: 'true'
+      ROLLUP_SKIP_NODE_DOWNLOAD: 'true'
 
     steps:
       - name: Checkout
