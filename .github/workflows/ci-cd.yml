@@ -206,21 +206,20 @@ jobs:
           fi
 
       - name: Wait for QA deploy to be live
-        run: |
-          if [ -z "$QA_URL" ] || [ "$QA_URL" = "https://fake-qa-url" ]; then
-            echo "QA URL no disponible. Usando sitio publicado para la espera."
-            QA_WAIT_URL=https://vermillion-biscotti-218683.netlify.app
-          else
-            QA_WAIT_URL=$QA_URL
-          fi
-          echo "Esperando a que $QA_WAIT_URL esté disponible..."
-          npx wait-on "$QA_WAIT_URL"
         env:
-          QA_URL: ${{ env.QA_PREVIEW_URL }}
+          QA_WAIT_URL: ${{ needs.deploy-qa.outputs.qa_url }}
+        run: |
+          TARGET_URL=$QA_WAIT_URL
+          if [ -z "$TARGET_URL" ] || [ "$TARGET_URL" = "https://fake-qa-url" ] || [ "$TARGET_URL" = "null" ]; then
+            echo "QA URL no disponible desde el deploy. Usando sitio publicado."
+            TARGET_URL=https://vermillion-biscotti-218683.netlify.app
+          fi
+          echo "Esperando a que $TARGET_URL esté disponible..."
+          npx wait-on "$TARGET_URL"
 
       - name: Run Cypress tests against QA
         env:
-          CYPRESS_BASE_URL: ${{ env.QA_PREVIEW_URL }}
+          CYPRESS_BASE_URL: ${{ needs.deploy-qa.outputs.qa_url }}
           CYPRESS_API_URL: https://tp5-f4vq.onrender.com
         run: |
           echo "Corriendo Cypress contra frontend QA ($CYPRESS_BASE_URL) y backend Render..."
