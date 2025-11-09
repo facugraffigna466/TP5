@@ -141,17 +141,17 @@ jobs:
       - name: Deploy frontend to Netlify (QA)
         id: netlify
         env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN_QA }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID_QA }}
+          NETLIFY_AUTH_TOKEN_QA: ${{ secrets.NETLIFY_AUTH_TOKEN_QA }}
+          NETLIFY_SITE_ID_QA: ${{ secrets.NETLIFY_SITE_ID_QA }}
         run: |
-          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
+          if [ -z "$NETLIFY_AUTH_TOKEN_QA" ] || [ -z "$NETLIFY_SITE_ID_QA" ]; then
             echo "Netlify QA secrets not configured. Skipping frontend deploy."
             echo "qa_url=https://fake-qa-url" >> $GITHUB_OUTPUT
             exit 0
           fi
           DEPLOY_URL=$(npx netlify deploy \
-            --auth "$NETLIFY_AUTH_TOKEN" \
-            --site "$NETLIFY_SITE_ID" \
+            --auth "$NETLIFY_AUTH_TOKEN_QA" \
+            --site "$NETLIFY_SITE_ID_QA" \
             --dir dist \
             --message "QA deploy $GITHUB_SHA" \
             --json | jq -r '.deploy_url')
